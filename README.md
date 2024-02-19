@@ -1,4 +1,4 @@
-# DataSynth
+# DataSmith
 
 Here are the steps involved in Data Synthesis:
 
