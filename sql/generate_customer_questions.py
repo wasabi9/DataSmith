@@ -57,7 +57,7 @@ def generate_questions(
     print("Completed id: {0}".format(id))
     # import ipdb; ipdb.set_trace()
 
-    return (subset_columns, result["choices"][0]["message"]["content"])
+    return (subset_columns, result.choices[0].message.content)
 
 
 class QuestionGeneration():
@@ -125,8 +125,7 @@ class QuestionGeneration():
                     post_additions = len(generated_questions)
                     selected_columns += [subset_columns for _ in range(post_additions-pre_additions)]
                     if len(selected_columns) != len(generated_questions):
-                        import ipdb; ipdb.set_trace()
-                        print(1)
+                        raise Exception("Length mismatch for selected_columns and generated)_questions")
                 except Exception as e:
                     print("Error: {0}".format(e))
                     continue
@@ -135,8 +134,9 @@ class QuestionGeneration():
         try:
             assert len(selected_columns) == len(generated_questions)
         except Exception as e:
-            import ipdb; ipdb.set_trace()
-            print(e)
+            # import ipdb; ipdb.set_trace()
+            # print(e)
+            raise Exception(e)
 
         with open(os.path.join(self.connection_folder, "generated_questions.json"), "w") as generation_file:
             json.dump(generated_questions, generation_file)

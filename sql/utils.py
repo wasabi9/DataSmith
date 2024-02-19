@@ -1,4 +1,4 @@
-import openai
+from openai import OpenAI
 import os
 from joblib import Parallel, delayed
 from retry import retry
@@ -18,7 +18,6 @@ def convert_msql_to_pg(ddl_file, folder, dst_folder):
     system = "You are a MySQL and PostGres expert. Help me change MySQL DDL file to Postgres DDL file"
     user = "This is the equvalent DDL file in MYSQL:\n {0} \n Make relevant syntax changes to this and convert to PostGres Compatible DDL file.\n Keep the Column and Table names the same as before. Return the updates DDL in markdown enclosed in ```".format(ddl_content)
 
-    openai.api_key = os.environ["OPENAI_API_KEY"]
 
     messages = []
     messages.append({
@@ -31,13 +30,13 @@ def convert_msql_to_pg(ddl_file, folder, dst_folder):
         "content": user
     })
 
-    result = openai.ChatCompletion.create(
-        model="gpt-4-1106-preview",
-        temperature=0.0,
-        messages=messages
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),)
+    result = client.chat.completions.create(
+        messages=messages, 
+        model="gpt-4-1106-preview"
     )
 
-    output = result['choices'][0]['message']['content']
+    output = result.choices[0].message.content
 
     updated_ddl = output.split("```sql")[-1].split("```")[0]
 
