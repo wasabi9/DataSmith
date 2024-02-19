@@ -5,6 +5,7 @@ from sql.generate_metadata import MetaData
 from sql.generate_train import PrepareData
 from sql.data_quality import CheckQuery
 from dotenv import load_dotenv
+import fire
 
 class DataSynthSQL(DataSynth):
     def __init__(
@@ -60,14 +61,23 @@ class DataSynthSQL(DataSynth):
         check_query.setup_databases()
         check_query.check_questions()
 
+
+def generate_data(databases, sql_folder, metadata_folder):
+    data_synthesis = DataSynthSQL(sql_folder, metadata_folder, databases)
+    data_synthesis.compile()
+    data_synthesis.process()
+    data_synthesis.check()
+
 if __name__=="__main__":
-    databases, sql_folder, metadata_folder = 1, "sql/created_test", "sql/metadata_test"
-    try:
-        data_synthesis = DataSynthSQL(sql_folder, metadata_folder, databases)
-        data_synthesis.compile()
-        data_synthesis.process()
-        data_synthesis.check()
-    except:
-        import shutil
-        shutil.rmtree("sql/created_test")
-        shutil.rmtree("sql/metadata_test")
+    # Call generate_data as ```python main_sql.py generate_data --databases 1 --sql_folder sql/creates_test --metadata_folder sql/metadata_test```
+    fire.Fire()
+    # databases, sql_folder, metadata_folder = 1, "sql/created_test", "sql/metadata_test"
+    # try:
+    #     data_synthesis = DataSynthSQL(sql_folder, metadata_folder, databases)
+    #     data_synthesis.compile()
+    #     data_synthesis.process()
+    #     data_synthesis.check()
+    # except:
+    #     import shutil
+    #     shutil.rmtree("sql/created_test")
+    #     shutil.rmtree("sql/metadata_test")
