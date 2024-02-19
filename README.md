@@ -8,3 +8,13 @@ Here are the steps involved in Data Synthesis:
 4. Confounding Variables and Diversity Dimensions - Either manual or to be determined automatically
 5. Data Generation
 6. Checks for Data Quality - Key Objective, Factual Correctness, Bias, Diversity
+
+**Setup**
+
+Python package requirements placed in requirements.txt
+
+```
+pip install -r requirements.txt
+```
+
+Add your OpenAI Key as environment variable - either in .zsh or .env file
