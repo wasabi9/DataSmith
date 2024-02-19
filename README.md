@@ -18,3 +18,11 @@ pip install -r requirements.txt
 ```
 
 Add your OpenAI Key as environment variable - either in .zsh or .env file
+
+**Entry Point**
+
+main_sql.py
+
+```
+python main_sql.py generate_data --databases 1 --sql_folder sql/creates_test --metadata_folder sql/metadata_test
+```
