@@ -3,15 +3,12 @@ import os
 import time
 from typing import List
 from tqdm import tqdm
-import openai
+from openai import OpenAI
 import re
 import ast
 from retry import retry
 from joblib import Parallel, delayed
 from dotenv import load_dotenv
-
-FOLDER = "datasets/created_v2/"
-# FOLDER = "datasets/created_v3/"
 
 class Prompts:
     def system_db_prompt(self):
@@ -44,21 +41,21 @@ def call_openai(system_prompt: str, user_prompt: str):
         "content": user_prompt
     })
 
-    result = openai.ChatCompletion.create(
-        model="gpt-4",
-        temperature=0.8,
-        messages=messages
-    )
-    
-    output = result['choices'][0]['message']['content']
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),)
+    result = client.chat.completions.create(
+                messages=messages,
+                model="gpt-4",
+            )
+
+    output = result.choices[0].message.content
 
     return output
 
 
 class Dataset:
-    def __init__(self) -> None:
-        openai.api_key = os.environ["OPENAI_API_KEY"]
+    def __init__(self, folder: str) -> None:
         self.prompts = Prompts()
+        self.folder = folder
 
     def extract_ddl(self, output: str):
         indices = [m.start() for m in re.finditer('```', output)]
@@ -125,7 +122,9 @@ class Dataset:
                 if result != "":
                     ddl += result + "\n\n"
 
-            with open(FOLDER+result_dict["database"]+"_"+str(i)+".sql", "w") as file:
+            if os.path.exists(self.folder)==False:
+                os.mkdir(self.folder)
+            with open(os.path.join(self.folder, result_dict["database"]+"_"+str(i)+".sql"), "w") as file:
                 file.write(ddl)
             ddl_list.append(ddl)
             time.sleep(random.randint(5, 10))
@@ -134,8 +133,9 @@ class Dataset:
     
 
 if __name__ == "__main__":
+    folder = "sql/created_v2/"
     load_dotenv()    
-    dataset = Dataset()
+    dataset = Dataset(folder=folder)
     print(dataset.create(100))
 
             

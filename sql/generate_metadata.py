@@ -5,10 +5,12 @@ import random
 import re
 import time
 from typing import Dict, List
-import openai
+# import openai
+from openai import OpenAI
 from retry import retry
 from tqdm import tqdm
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
+import concurrent.futures
 from dotenv import load_dotenv
 
 def get_tables(ddl: str)->List[str]:
@@ -45,16 +47,16 @@ def get_columns(ddl: str, raw_columns: bool=False)->List[str]:
 
 class LLM:
     def __init__(self, model: str="gpt-4"):
-        openai.api_key = os.environ["OPENAI_API_KEY"]
+        # openai.api_key = os.environ["OPENAI_API_KEY"]
         self.model = model
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"),)
 
     @retry(tries=5, delay=5, max_delay=50, backoff=5, logger=True)
     def create(self, prompt: str, sleep: int=10, **kwargs):
         if "gpt" in self.model:
-            result = openai.ChatCompletion.create(
-                model=self.model,
+            result = self.client.chat.completions.create(
                 messages=prompt,
-                **kwargs
+                model=self.model
             )
 
         time.sleep(random.randint(5, sleep))
@@ -278,7 +280,7 @@ class MetaData:
     Database MetaData -> Table Metadata -> 
     Column Metadata -> Column Sample Values -> 
     Joins & Foreign Keys -> Business questions and SQL queries"""
-    def __init__(self, sql_folder: str="datasets/created", metadata_folder: str="datasets/metadata", model: str="gpt-4"):
+    def __init__(self, sql_folder: str="sql/created", metadata_folder: str="sql/metadata", model: str="gpt-4"):
         self.sql_folder = sql_folder
         self.prompt_library = PromptLibrary() 
         self.metadata_folder = metadata_folder
@@ -305,8 +307,8 @@ class MetaData:
                 table_list = get_tables(ddl)
                 prompt = self.prompt_library.database(database_name, table_list)
                 result = self.llm.create(prompt, temperature=0.0)
-                result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
 
                 return (
                     database_id, 
@@ -317,19 +319,27 @@ class MetaData:
                 self.database_metadata[database_id]["database"], 
                 self.database_metadata[database_id]["description"])
         
-        result = Parallel(n_jobs=1)(delayed(get_db_metadata)(file) for file in tqdm(os.listdir(self.sql_folder)))
+        files = [file for file in os.listdir(self.sql_folder)]
+        num_processes = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
+            result = list(executor.map(get_db_metadata, files))
         for (database_id, database_name, database_description) in result:
             self.database_metadata[database_id] = {
                 "database": database_name,
                 "description": database_description
             }
 
+        if os.path.exists(self.metadata_folder)==False:
+            os.mkdir(self.metadata_folder)
         with open(self.metadata_folder+ "/" + "database_metadata.json", "w") as f:
             json.dump(self.database_metadata, f)
 
     def tables(self):
         """Table metadata"""
         self.table_metadata = {}
+
+        if os.path.exists(os.path.join(self.metadata_folder,"table"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"table"))
 
         def get_tables_metadata(file):
             print("     Creating table metadata for {0}".format(file))
@@ -352,8 +362,8 @@ class MetaData:
                     if table not in table_description:
                         prompt = self.prompt_library.table(database_name, table, column_lists[table])
                         result = self.llm.create(prompt, temperature=0.0)
-                        result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                        description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                        result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                        description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
                         table_description[table] = description(result_).strip('\n; ')
             
             with open(self.metadata_folder+'/table/'+str(database_id)+'.json', 'w') as file:
@@ -361,13 +371,20 @@ class MetaData:
 
             return (database_id, table_description)
             
-        result = Parallel(n_jobs=-1)(delayed(get_tables_metadata)(file) for file in tqdm(os.listdir(self.sql_folder)))
+        files = [file for file in os.listdir(self.sql_folder)]
+        num_processes = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
+            result = list(executor.map(get_tables_metadata, files))
+        # result = Parallel(n_jobs=-1)(delayed(get_tables_metadata)(file) for file in tqdm(os.listdir(self.sql_folder)))
         for (database_id, table_description) in result:
             self.table_metadata[database_id] = table_description
         
     def columns(self):
         """Columns metadata"""
         self.column_metadata = {}
+
+        if os.path.exists(os.path.join(self.metadata_folder,"column"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"column"))
 
         print(" Creating column metadata--------------")
         def get_columns_metadata(file):
@@ -397,8 +414,8 @@ class MetaData:
                             column_lists[table]
                         )
                         result = self.llm.create(prompt, temperature=0.0)
-                        result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                        description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                        result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                        description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
                         # column_description[table] = ast.literal_eval(description(result_).strip('\n; '))
                         try:
                             cleaned_str = description(result_).strip('\n; ')
@@ -414,7 +431,10 @@ class MetaData:
 
             return (database_id, column_description)
         
-        result = Parallel(n_jobs=4)(delayed(get_columns_metadata)(file) for file in tqdm(os.listdir(self.sql_folder)))
+        files = [file for file in os.listdir(self.sql_folder)]
+        num_processes = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
+            result = list(executor.map(get_columns_metadata, files))
         for (database_id, column_description) in result:
             self.column_metadata[database_id] = column_description       
         
@@ -422,6 +442,10 @@ class MetaData:
     def samples(self):
         """Generating column samples"""
         self.generated_samples = {}
+
+        if os.path.exists(os.path.join(self.metadata_folder,"samples"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"samples"))
+
         print(" Generating column samples--------------")
 
         def get_samples(file):
@@ -452,8 +476,8 @@ class MetaData:
                         self.column_metadata[database_id][table]
                     )
                     result = self.llm.create(prompt, temperature=0.0)
-                    result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                    description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                    result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                    description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
                     try:
                         samples_ = ast.literal_eval(description(result_).strip('\n; '))
                     except:
@@ -466,11 +490,12 @@ class MetaData:
                             print("         Skipping sample value creation for {0}".format(table))
                             print("         Error: {0}".format(error))
                             return (table, [])
-                return (table, samples_)
-                            
+                return (table, samples_)                     
             
-            result = Parallel(n_jobs=-1)(delayed(get_table_samples)(file) for file in tqdm(column_lists))
-            
+            files = [file for file in os.listdir(self.sql_folder)]
+            num_processes = None
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
+                result = list(executor.map(get_table_samples, files))
             for table, sample_value in result:
                 sample_values[table] = sample_value
             
@@ -479,7 +504,6 @@ class MetaData:
 
             return (database_id, sample_values)
         
-        # result = Parallel(n_jobs=1)(delayed(get_samples)(file) for file in tqdm(os.listdir(self.sql_folder)))
         result = [get_samples(file) for file in tqdm(os.listdir(self.sql_folder))]
         for (database_id, sample_values) in result:
             self.generated_samples[database_id] = sample_values        
@@ -487,6 +511,10 @@ class MetaData:
     def joins(self):
         """Generating Joins"""
         self.generated_joins = {}
+
+        if os.path.exists(os.path.join(self.metadata_folder,"joins"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"joins"))
+
         print(" Generating joins--------------")
 
         def get_joins_metadata(file):
@@ -510,8 +538,8 @@ class MetaData:
                     column_lists
                 )
                 result = self.llm.create(prompt, temperature=0.0)
-                result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
                 try:
                     join_metadata = ast.literal_eval(description(result_).strip('\n; '))
                 except:
@@ -530,7 +558,10 @@ class MetaData:
 
             return (database_id, join_metadata)
 
-        result = Parallel(n_jobs=-1)(delayed(get_joins_metadata)(file) for file in tqdm(os.listdir(self.sql_folder)))
+        files = [file for file in os.listdir(self.sql_folder)]
+        num_processes = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
+            result = list(executor.map(get_joins_metadata, files))
         for (database_id, join_metadata) in result:
             self.generated_joins[database_id] = join_metadata
 
@@ -538,6 +569,10 @@ class MetaData:
     def questions(self):
         """Generating Questions"""
         self.generated_questions = {}
+
+        if os.path.exists(os.path.join(self.metadata_folder,"questions"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"questions"))
+
         print(" Generating questions--------------")
 
         def wrapper_get_questions(file):
@@ -618,8 +653,8 @@ class MetaData:
                 )
                 result = self.llm.create(prompt, temperature=0.0)
                 print("     Total tokens used: {0}".format(result["usage"]["total_tokens"]))
-                result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
                 try:
                     question_metadata = ast.literal_eval(description(result_).strip('\n; '))
                 except:
@@ -635,7 +670,10 @@ class MetaData:
 
             return (database_id, question_metadata)
 
-        result = Parallel(n_jobs=4)(delayed(wrapper_get_questions)(file) for file in tqdm(os.listdir(self.sql_folder)))
+        files = [file for file in os.listdir(self.sql_folder)]
+        num_processes = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
+            result = list(executor.map(wrapper_get_questions, files))
         for (database_id, questions) in result:
             self.generated_questions[database_id] = questions
 
@@ -673,6 +711,13 @@ class MetaData:
             
 
     def clean_metadata(self):
+        if os.path.exists(os.path.join(self.metadata_folder,"cleaned_table"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"cleaned_table"))
+        if os.path.exists(os.path.join(self.metadata_folder,"cleaned_column"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"cleaned_column"))
+        if os.path.exists(os.path.join(self.metadata_folder,"cleaned_joins"))==False:
+            os.mkdir(os.path.join(self.metadata_folder,"cleaned_joins"))
+
         # cleaning database metadata
         for key in self.database_metadata:
             self.database_metadata[key]['description'] = self.database_metadata[key]['description'].replace("\n", "")
@@ -763,7 +808,7 @@ if __name__ == "__main__":
     # metadata.clean_metadata()
 
     # metadata = MetaData(model="gpt-4-1106-preview", sql_folder="datasets/created_v3", metadata_folder="datasets/metadata_v3")
-    metadata = MetaData(model="gpt-3.5-turbo-1106", sql_folder="datasets/created_v3", metadata_folder="datasets/metadata_v3")
+    metadata = MetaData(model="gpt-3.5-turbo-1106", sql_folder="sql/created_v3", metadata_folder="sql/metadata_v3")
     # metadata.tables()
     # metadata.columns()
     # metadata.samples()

@@ -67,58 +67,58 @@ def execute_query(connection, query):
         print(f"The error '{e}' occurred")
         return str(e)
 
-def setup_databases(folder, qc_log_file):
-    error_log = {}
-    for ddl_file in tqdm(os.listdir(folder)):
-        # import ipdb; ipdb.set_trace()
-        db_name = ddl_file.split('.')[0].lower()
-        print("setting up {0}".format(ddl_file))
+class CheckQuery:
+    def __init__(self, db_folder, question_folder, qc_log_folder: str="sql/qc_logs", qc_setup_log_file: str="setup", qc_run_log_file: str="run") -> None:
+        self.db_folder = db_folder
+        self.question_folder = question_folder
+        self.qc_log_folder = qc_log_folder
+        self.qc_setup_log_file = qc_setup_log_file
+        self.qc_run_log_file = qc_run_log_file
 
-        create_database(db_name)
-        connection = create_connection(db_name, db_user, db_password, db_host, db_port)
+    def check_questions(self):                
+        files = os.listdir(self.question_folder)
+        qc_logs = {}
+        for file in files:
+            db_name = file.split(".")[0].lower()
 
-        ddl_content = read_sql_file(os.path.join(folder, ddl_file))
+            qc_logs[file] = {}
+
+            with open(os.path.join(self.question_folder, file), "r") as question_file:
+                questions = json.load(question_file)
+
+            connection = create_connection(db_name, db_user, db_password, db_host, db_port)
+
+            for question in questions:
+                query = questions[question]
+                error = execute_query(connection, query)
+
+                if error is not None:
+                    qc_logs[file][query] = error
         
-        error = execute_query(connection, ddl_content)
+        with open(os.path.join(self.qc_log_folder, self.qc_run_log_file+".json"), "w") as qc_file:
+            json.dump(qc_logs, qc_file)
 
-        if error is not None:
-            error_log[ddl_file] = error
+    def setup_databases(self):
+        error_log = {}
+        for ddl_file in tqdm(os.listdir(self.db_folder)):
+            db_name = ddl_file.split('.')[0].lower()
+            print("setting up {0}".format(ddl_file))
 
-        # break
+            create_database(db_name)
+            connection = create_connection(db_name, db_user, db_password, db_host, db_port)
 
-    with open(os.path.join("/Users/abhinaykumar/Desktop/Work/featherflow/llama-tests/datasets/qc_logs",qc_log_file+".json"), "w") as qc_file:
-        json.dump(error_log, qc_file)    
-                
-
-def check_questions(folder, qc_log_file):
-    import ipdb; ipdb.set_trace()
-    files = os.listdir(folder)
-    qc_logs = {}
-    for file in files:
-        db_name = file.split(".")[0].lower()
-
-        qc_logs[file] = {}
-
-        with open(os.path.join(folder, file), "r") as question_file:
-            questions = json.load(question_file)
-
-        connection = create_connection(db_name, db_user, db_password, db_host, db_port)
-
-        for question in questions:
-            query = questions[question]
-            error = execute_query(connection, query)
+            ddl_content = read_sql_file(os.path.join(self.db_folder, ddl_file))
+            
+            error = execute_query(connection, ddl_content)
 
             if error is not None:
-                qc_logs[file][query] = error
-    
-    with open(os.path.join("/Users/abhinaykumar/Desktop/Work/featherflow/llama-tests/datasets/qc_logs",qc_log_file+".json"), "w") as qc_file:
-        json.dump(qc_logs, qc_file)
+                error_log[ddl_file] = error
+
+        with open(os.path.join(self.qc_log_folder, self.qc_setup_log_file+".json"), "w") as qc_file:
+            json.dump(error_log, qc_file) 
 
 if __name__ == "__main__":
-    # folder = "/Users/abhinaykumar/Desktop/Work/featherflow/llama-tests/datasets/created_v2"
-    # qc_log_file = "test_v2"
-    # setup_databases(folder, qc_log_file)
+    db_folder = "sql/created_v2"
+    question_folder = "sql/metadata_v2/questions"
 
-    folder = "/Users/abhinaykumar/Desktop/Work/featherflow/llama-tests/datasets/metadata_v2/questions"
-    qc_log_file = "questions_v2"
-    check_questions(folder, qc_log_file)
+    check_query = CheckQuery(db_folder, question_folder)

@@ -4,7 +4,7 @@ import os
 import random
 import re
 from typing import List
-from generate_metadata import LLM
+from sql.generate_metadata import LLM
 import openai
 from joblib import Parallel, delayed
 from tqdm import tqdm
@@ -34,7 +34,7 @@ def get_train_prompt(query):
     return messages
 
 class PrepareData():
-    def __init__(self, files: List[str], dialect: str="MySQL", master_folder: str="datasets/metadata"):
+    def __init__(self, files: List[str], dialect: str="MySQL", master_folder: str="sql/metadata"):
         self.queries = {}
         self.master_folder = master_folder
         if dialect.lower() == "mysql":
@@ -69,10 +69,10 @@ class PrepareData():
             query = self.queries[file][question]
             prompt = get_train_prompt(query)
             result = llm.create(prompt)
-            result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-            description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+            result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+            description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
 
-            table_column_used = result["choices"][0]["message"]["content"]
+            table_column_used = result.choices[0].message.content
             try:
                 table_column_used = ast.literal_eval(description(result_).strip('\n; '))
                 
@@ -94,10 +94,10 @@ class PrepareData():
                     # query = self.queries[file][question]
                     # prompt = get_train_prompt(query)
                     # result = llm.create(prompt)
-                    # result_ = re.findall(r"```([\s\S]*?)```", result["choices"][0]["message"]["content"])
-                    # description = lambda x: x[0] if len(x)>0 else result["choices"][0]["message"]["content"]
+                    # result_ = re.findall(r"```([\s\S]*?)```", result.choices[0].message.content)
+                    # description = lambda x: x[0] if len(x)>0 else result.choices[0].message.content
 
-                    # table_column_used = result["choices"][0]["message"]["content"]
+                    # table_column_used = result.choices[0].message.content
                     # try:
                     #     table_column_used = ast.literal_eval(description(result_).strip('\n; '))
                         
@@ -384,7 +384,7 @@ class PrepareData():
 
 if __name__ == "__main__":
     load_dotenv()
-    master_folder = "datasets/metadata_v2"
+    master_folder = "sql/metadata_v2"
     files = os.listdir(master_folder+"/questions")
     dialect = "Postgres"
     prep_data = PrepareData(files=files, dialect=dialect, master_folder=master_folder)
