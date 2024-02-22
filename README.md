@@ -9,6 +9,9 @@ Here are the steps involved in Data Synthesis:
 5. Data Generation
 6. Checks for Data Quality - Key Objective, Factual Correctness, Bias, Diversity
 
+## Roadmap
+1. https://arxiv.org/pdf/2402.13064.pdf
+
 **Setup**
 
 Python package requirements placed in requirements.txt
